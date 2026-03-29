@@ -42,6 +42,6 @@ cmake-build-*
 #baconpaul habit
 ignore/
 #df habit
-build/
+build*/
 out/
 .DS_Store
