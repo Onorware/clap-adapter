@@ -55,6 +55,21 @@ cmake -B build \
 ```
 If you'd like to also build for AUv2 include `-DCLAP_WRAPPER_BUILD_AUV2=ON` and the SDK in the folder `AudioUnitSDK`.
 
+## Syncing with Upstream
+
+This repo is an Onorware fork of [free-audio/clap-wrapper](https://github.com/free-audio/clap-wrapper). To pull in the latest upstream changes:
+
+```bash
+git fetch upstream
+git merge upstream/main
+```
+
+If there are conflicts, resolve them and commit. Then push to the Onorware remote:
+
+```bash
+git push origin main
+```
+
 ## Licensing
 
 The `clap-wrapper` project is released under the MIT license.
