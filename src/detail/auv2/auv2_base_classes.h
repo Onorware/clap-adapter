@@ -286,6 +286,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
                        void *outData) override;
   OSStatus SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScope, AudioUnitElement inElement,
                        const void *inData, UInt32 inDataSize) override;
+  // AUBase's dispatcher handles kAudioUnitProperty_ContextName itself (stores
+  // mContextName) and notifies via PropertyChanged — it never routes through our
+  // SetProperty. So we capture the host track name here.
+  void PropertyChanged(AudioUnitPropertyID inID, AudioUnitScope inScope,
+                       AudioUnitElement inElement) override;
 
   // Render Notification
   OSStatus SetRenderNotification(AURenderCallback inProc, void *inRefCon) override;
@@ -470,7 +475,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
 
   bool track_info_get(clap_track_info_t *info) override
   {
-    return false;
+    // Return the track info captured from the AU host's
+    // kAudioUnitProperty_ContextName (see WrapAsAUV2::PropertyChanged).
+    if (!_hasTrackInfo) return false;
+    *info = _trackInfo;
+    return true;
   }
 
   // --------------- IAutomation
@@ -545,6 +554,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
   // std::vector<clap_note_port_info_t> _midi_outports_info;
 
   std::string _hostname = "CLAP-as-AUv2";
+
+  // Track name pushed by the host via kAudioUnitProperty_ContextName (e.g. Logic
+  // Pro), surfaced to the wrapped CLAP plugin through the clap.track-info ext.
+  clap_track_info_t _trackInfo{};
+  bool _hasTrackInfo{false};
 
 #ifdef DUAL_SCHEDULING_ENABLED
   bool _midi_dualscheduling_mode = false;

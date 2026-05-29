@@ -3,6 +3,10 @@
 #include <set>
 #include <limits>
 #include <cassert>
+// AUv2 host track-name (kAudioUnitProperty_ContextName) → clap.track-info bridge
+#include <clap/ext/track-info.h>
+#include <clap/string-sizes.h>
+#include <cstring>
 
 extern bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo *viewInfo, std::shared_ptr<Clap::Plugin>);
 
@@ -917,6 +921,31 @@ OSStatus WrapAsAUV2::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScop
     ;
   }
   return xxx;
+}
+
+// AUBase's property dispatcher stores the host-supplied track name into
+// mContextName and notifies via PropertyChanged (it does NOT route through our
+// SetProperty). Capture it here and surface it to the wrapped CLAP plugin through
+// the clap.track-info extension — the same path JUCE/FabFilter use for AU.
+void WrapAsAUV2::PropertyChanged(AudioUnitPropertyID inID, AudioUnitScope inScope,
+                                 AudioUnitElement inElement)
+{
+  Base::PropertyChanged(inID, inScope, inElement);
+
+  if (inID == kAudioUnitProperty_ContextName && inScope == kAudioUnitScope_Global)
+  {
+    CFStringRef cfName = GetContextName();
+    char buf[CLAP_NAME_SIZE] = {0};
+    if (cfName && CFStringGetCString(cfName, buf, sizeof(buf), kCFStringEncodingUTF8))
+    {
+      _trackInfo = clap_track_info_t{};
+      _trackInfo.flags = CLAP_TRACK_INFO_HAS_TRACK_NAME;
+      strncpy(_trackInfo.name, buf, CLAP_NAME_SIZE - 1);
+      _hasTrackInfo = true;
+      if (_plugin && _plugin->_ext._trackinfo && _plugin->_ext._trackinfo->changed)
+        _plugin->_ext._trackinfo->changed(_plugin->_plugin);
+    }
+  }
 }
 
 OSStatus WrapAsAUV2::SetRenderNotification(AURenderCallback inProc, void *inRefCon)
