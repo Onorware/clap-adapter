@@ -1309,6 +1309,41 @@ OSStatus WrapAsAUV2::SaveState(CFPropertyListRef *ptPList)
   return noErr;
 }
 
+void WrapAsAUV2::syncParameterValuesToHost()
+{
+  // Push the plugin's CURRENT parameter values into the AU's own parameter storage.
+  //
+  // setupParameters() seeds that storage once, at initialisation, from whatever the
+  // plugin's parameters happen to be then — the defaults. Restoring state afterwards
+  // loads the saved values into the plugin but announces nothing, so the host's mirror
+  // still holds the defaults. Serene's own UI reads correctly while Logic's generic
+  // Controls view, automation and any control surface read the wrong number, until the
+  // user happens to move something and that one parameter resyncs.
+  if (!_plugin || !_plugin->_ext._params) return;
+
+  auto guarantee_mainthread = _plugin->AlwaysMainThread();
+  const auto *params = _plugin->_ext._params;
+
+  AudioUnitEvent myEvent;
+  myEvent.mEventType = kAudioUnitEvent_ParameterValueChange;
+  myEvent.mArgument.mParameter.mAudioUnit = GetComponentInstance();
+  myEvent.mArgument.mParameter.mScope = kAudioUnitScope_Global;
+  myEvent.mArgument.mParameter.mElement = 0;
+
+  for (const auto &entry : _parametertree)
+  {
+    double value = 0.0;
+    if (!params->get_value(_plugin->_plugin, entry.first, &value)) continue;
+
+    // Same units the plugin's own edits arrive in (see onPerformEdit) — the CLAP
+    // plain value goes straight into the AU parameter.
+    Globals()->SetParameter(entry.first, static_cast<AudioUnitParameterValue>(value));
+
+    myEvent.mArgument.mParameter.mParameterID = static_cast<AudioUnitParameterID>(entry.first);
+    AUEventListenerNotify(NULL, NULL, &myEvent);
+  }
+}
+
 OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
 {
   if (!plist) return kAudioUnitErr_InvalidParameter;
@@ -1348,6 +1383,7 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
 
       chunk.setData(streamData, numBytes);
       _plugin->_ext._state->load(_plugin->_plugin, chunk);
+      syncParameterValuesToHost();
     }
     return noErr;
   }
@@ -1371,6 +1407,7 @@ OSStatus WrapAsAUV2::RestoreState(CFPropertyListRef plist)
       Clap::StateMemento chunk;
       chunk.setData(pData, lLen);
       _plugin->_ext._state->load(_plugin->_plugin, chunk);
+      syncParameterValuesToHost();
     }
   }
   return noErr;

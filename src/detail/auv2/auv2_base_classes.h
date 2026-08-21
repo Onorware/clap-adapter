@@ -532,6 +532,12 @@ class WrapAsAUV2 : public ausdk::AUBase,
 
   void activateCLAP();
   void deactivateCLAP();
+
+  // Re-seed the AU's parameter storage from the plugin's current values. Needed
+  // after RestoreState: loading state changes the plugin's parameters without
+  // telling the host, so the host's mirror keeps the defaults until the user
+  // happens to move something.
+  void syncParameterValuesToHost();
   bool IsBypassEffect()
   {
     return false;
