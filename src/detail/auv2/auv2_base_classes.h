@@ -24,6 +24,7 @@
 #include "process.h"
 #include "parameter.h"
 #include "detail/shared/fixedqueue.h"
+#include "detail/shared/spinlock.h"
 #include "detail/os/osutil.h"
 #include "detail/clap/automation.h"
 
@@ -390,6 +391,10 @@ class WrapAsAUV2 : public ausdk::AUBase,
   }
   void param_request_flush() override
   {
+    // Can arrive on any thread, so just record it: onIdle() does the flush on the
+    // main thread. Without this the plugin's queued parameter changes are dropped
+    // whenever the host is not rendering. See ProcessAdapter::flush().
+    _requestedFlush = true;
   }
 
   void latency_changed() override;
@@ -574,6 +579,11 @@ class WrapAsAUV2 : public ausdk::AUBase,
   AUMIDIOutputCallbackStruct _midioutput_hostcallback = {nullptr, nullptr};
 
   std::atomic_bool _requestUICallback = false;
+
+  // Set by param_request_flush(), consumed by onIdle(). `_processOrFlushLock` keeps
+  // that flush off the render adapter while the audio thread is inside process().
+  std::atomic_bool _requestedFlush = false;
+  ClapWrapper::detail::shared::SpinLock _processOrFlushLock;
 
   // the queue from audiothread to UI thread
   ClapWrapper::detail::shared::fixedqueue<queueEvent, 8192> _queueToUI;

@@ -1083,7 +1083,12 @@ OSStatus WrapAsAUV2::Render(AudioUnitRenderActionFlags &inFlags, const AudioTime
 
     auto it_is = _plugin->AlwaysAudioThread();
 
-    _processAdapter->process(data);
+    {
+      // Held against onIdle()'s deferred parameter flush, which reads the same
+      // adapter from the main thread.
+      ClapWrapper::detail::shared::SpinLockGuard processLock(_processOrFlushLock);
+      _processAdapter->process(data);
+    }
 
     {
       for (auto &i : _midi_outports)
@@ -1221,6 +1226,18 @@ void WrapAsAUV2::onIdle()
       auto guarantee_mainthread = _plugin->AlwaysMainThread();
       _plugin->_plugin->on_main_thread(_plugin->_plugin);
     }
+  }
+
+  // Honour the plugin's parameter flush request. Only reachable while the host is
+  // not rendering — if it is, process() drains the same queue anyway, so skipping
+  // here costs nothing. Without this the plugin's own GUI cannot durably set a
+  // parameter in a stopped session: the value is queued, never read, and a project
+  // save writes the default while the GUI still displays the new number.
+  if (_requestedFlush.exchange(false) && _plugin && _plugin->_ext._params && _processAdapter)
+  {
+    ClapWrapper::detail::shared::SpinLockGuard flushLock(_processOrFlushLock);
+    auto guarantee_mainthread = _plugin->AlwaysMainThread();
+    _processAdapter->flush();
   }
 }
 

@@ -451,6 +451,26 @@ void ProcessAdapter::removeFromActiveNotes(const clap_event_note *note)
   }
 }
 
+void ProcessAdapter::flush()
+{
+  // Drain the plugin's parameter output queue without an audio callback.
+  //
+  // A CLAP plugin only gets its queued parameter changes applied when that queue is
+  // read, which normally happens inside process(). When the host is not rendering,
+  // nothing reads it, so a value set from the plugin's own GUI is never assigned and
+  // never reaches the host. The plugin asks us to do this via param_request_flush();
+  // WrapAsAUV2::onIdle() is where that request is honoured. Mirrors the VST3 wrapper's
+  // ProcessAdapter::flush().
+  if (_ext_params)
+  {
+    _events.clear();
+    _eventindices.clear();
+
+    // No input events to sort — this path exists purely to let the plugin write out.
+    _ext_params->flush(_plugin, _processData.in_events, _processData.out_events);
+  }
+}
+
 void ProcessAdapter::processOutputEvents()
 {
 }
